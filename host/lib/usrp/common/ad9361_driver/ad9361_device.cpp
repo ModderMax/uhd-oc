@@ -81,7 +81,7 @@ int get_num_taps(int max_num_taps)
 
 const double ad9361_device_t::AD9361_MAX_GAIN         = 89.75;
 const double ad9361_device_t::AD9361_MIN_CLOCK_RATE   = 220e3;
-const double ad9361_device_t::AD9361_MAX_CLOCK_RATE   = 61.44e6;
+const double ad9361_device_t::AD9361_MAX_CLOCK_RATE   = 122.88e6;
 const double ad9361_device_t::AD9361_CAL_VALID_WINDOW = 100e6;
 // Max bandwdith is due to filter rolloff in analog filter stage
 const double ad9361_device_t::AD9361_MIN_BW = 200e3;
@@ -1217,7 +1217,7 @@ double ad9361_device_t::_tune_bbvco(const double rate)
     int vcodiv;
 
     /* Iterate over VCO dividers until appropriate divider is found. */
-    int i = 1;
+    int i = 0;
     for (; i <= 6; i++) {
         vcodiv  = 1 << i;
         vcorate = rate * vcodiv;
@@ -1489,16 +1489,23 @@ double ad9361_device_t::_setup_rates(const double rate)
         divfactor    = 12;
         _tfir_factor = 2;
         _rfir_factor = 2;
-    } else if ((rate > 58e6) && (rate <= 61.44e6)) {
+    } else if ((rate > 58e6) && (rate <= 70e6)) { // can be increased to 80e6, pushing ADC to 640mhz but can cause instability
         // RX1 + RX2 enabled, 2, 1, 2, 2
         _regs.rxfilt = B8(11001110);
-
 
         // TX1 + TX2 enabled, 2, 1, 1, 2
         _regs.txfilt = B8(11010010);
 
         divfactor    = 8;
         _tfir_factor = 2;
+        _rfir_factor = 2;
+    } else if ((rate > 70e6) && (rate <= 122.88e6)) {
+
+        _regs.rxfilt = B8(11001101);
+        _regs.txfilt = B8(11001100);
+
+        divfactor    = 4;
+        _tfir_factor = 0;
         _rfir_factor = 2;
     } else {
         // should never get in here
@@ -1543,6 +1550,12 @@ double ad9361_device_t::_setup_rates(const double rate)
     _io_iface->poke8(0x004, _regs.inputsel);
     _io_iface->poke8(0x00A, _regs.bbpll);
 
+    if (rate > 104e6) {
+        /* Filtering acts weird above ~104msps - *shrug* slapping with WIP sticker */
+        _io_iface->poke8(0x0F6, 0x03);  // -12dB RX digital gain (not amplifier gain)
+        _io_iface->poke8(0x006, _io_iface->peek8(0x006) + 0x22); // Add RX timing margin
+    }
+
     UHD_LOG_TRACE("AD936X", "[ad9361_device_t::_setup_rates] adcclk=" << adcclk);
     _baseband_bw = (adcclk / divfactor);
 
@@ -1566,7 +1579,7 @@ double ad9361_device_t::_setup_rates(const double rate)
     const size_t num_tx_taps = get_num_taps(max_tx_taps);
     const size_t num_rx_taps = get_num_taps(max_rx_taps);
 
-    _setup_tx_fir(num_tx_taps, _tfir_factor);
+    if (_tfir_factor != 0) {_setup_tx_fir(num_tx_taps, _tfir_factor);}
     _setup_rx_fir(num_rx_taps, _rfir_factor);
 
     return _baseband_bw;
@@ -1857,7 +1870,7 @@ double ad9361_device_t::set_clock_rate(const double req_rate)
 {
     std::lock_guard<std::recursive_mutex> lock(_mutex);
 
-    if (req_rate > 61.44e6) {
+    if (req_rate > 122.88e6) {
         throw uhd::runtime_error(
             "[ad9361_device_t] Requested master clock rate outside range");
     }
