@@ -1501,12 +1501,12 @@ double ad9361_device_t::_setup_rates(const double rate)
         _rfir_factor = 2;
     } else if ((rate > 70e6) && (rate <= 122.88e6)) {
 
-        _regs.rxfilt = B8(11001101);
+        _regs.rxfilt = B8(11001100);
         _regs.txfilt = B8(11001100);
 
         divfactor    = 4;
         _tfir_factor = 0;
-        _rfir_factor = 2;
+        _rfir_factor = 0;
     } else {
         // should never get in here
         throw uhd::runtime_error("[ad9361_device_t] [_setup_rates] INVALID_CODE_PATH");
@@ -1580,7 +1580,7 @@ double ad9361_device_t::_setup_rates(const double rate)
     const size_t num_rx_taps = get_num_taps(max_rx_taps);
 
     if (_tfir_factor != 0) {_setup_tx_fir(num_tx_taps, _tfir_factor);}
-    _setup_rx_fir(num_rx_taps, _rfir_factor);
+    if (_rfir_factor != 0) {_setup_rx_fir(num_rx_taps, _rfir_factor);}
 
     return _baseband_bw;
 }
